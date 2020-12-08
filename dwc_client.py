@@ -5,15 +5,19 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import os
 import numpy as np
-import asyncio
-from fastapi import FastAPI, WebSocket, File, UploadFile
-from fastapi.responses import HTMLResponse, FileResponse
-import websockets
-import uuid
+#import asyncio
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import FileResponse
+#import websockets
+#import uuid
 import glob
 
+app = FastAPI()
+
 client_id = 'A'
-model = None
+
+# make dummy input/output data
+
 inputs = None
 outputs = None
 
@@ -22,15 +26,14 @@ def sample_net(input_shape,
     activation = tf.nn.relu,
     batch_size = None):
     def one_layer(x, dilation_rate=(1, 1, 1)):
-        x = tfpl.Convolution3DReparameterization(
-                filters,
+        x = tfp.layers.Convolution3DReparameterization(
                 kernel_size=3,
                 padding="same",
                 dilation_rate=dilation_rate,
                 activation=activation,
                 name="layer/vwnconv3d",
             )(x)
-        x = tfkl.Activation(activation, name="layer/activation")(x)
+        x = tf.keras.layers.Activation(activation, name="layer/activation")(x)
         return x
     
     inputs = tf.keras.layers.input(shape = input_shape, batch_size=batch_size, name="inputs")
@@ -38,9 +41,14 @@ def sample_net(input_shape,
     
     return tf.keras.Model(inputs=inputs, outputs=x)
 
-def train(inputs, outputs):
-    if model == None:
-        model = sample_net(np.shape(inputs))
+
+
+model = sample_net(np.shape(inputs))
+model.save_weights('prior-'+client_id+'.h5', save_format = 'h5')
+
+
+
+def train(inputs, outputs, model):
     # input shape: 4 x 1
     _op = 'adam'
     _loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -62,5 +70,5 @@ async def send_weights():
 @app.post("/")
 async def load_consolidated():
     model.load_weights(most_recent_consolidated())
-    train()
+    train(inputs, outputs, model)
     return {'consolidated weights': model}
